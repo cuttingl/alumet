@@ -273,7 +273,7 @@ pub async fn get_pod_name(
         return Ok(("".to_string(), "".to_string(), "".to_string()));
     };
 
-    let token = String::from_utf8_lossy(&output.stdout);
+    let token = String::from_utf8_lossy(&output_unwraped.stdout);
     let token = token.trim();
     if kubernetes_api_url.is_empty() {
         return Ok(("".to_string(), "".to_string(), "".to_string()));
