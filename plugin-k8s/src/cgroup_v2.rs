@@ -273,7 +273,7 @@ pub async fn get_pod_name(
         return Ok(("".to_string(), "".to_string(), "".to_string()));
     };
 
-    let token = String::from_utf8_lossy(&output_unwraped.stdout);
+    let token = String::from_utf8_lossy(&output.stdout);
     let token = token.trim();
     if kubernetes_api_url.is_empty() {
         return Ok(("".to_string(), "".to_string(), "".to_string()));
@@ -346,19 +346,22 @@ pub async fn get_pod_name(
                     }
                 }
             }
-           
+
             let pod_name = metadata.get("name").and_then(|v| v.as_str()).unwrap_or("");
             let pod_namespace = metadata.get("namespace").and_then(|v| v.as_str()).unwrap_or("");
             let pod_node = spec.get("nodeName").and_then(|v| v.as_str()).unwrap_or("");
             log::debug!("Found matching pod: {} in namespace {}", pod_name, pod_namespace);
-            hash_map_to_ret.entry(String::from(config_hash)).or_insert((pod_name.to_owned(), pod_namespace.to_owned(), pod_node.to_owned()));
-            
+            hash_map_to_ret.entry(String::from(config_hash)).or_insert((
+                pod_name.to_owned(),
+                pod_namespace.to_owned(),
+                pod_node.to_owned(),
+            ));
         }
     } else {
         log::debug!("No items found in the JSON response.");
     }
 
-    return hash_map_to_ret;
+    return Ok(hash_map_to_ret);
 }
 
 
@@ -479,7 +482,7 @@ pub async fn get_pod_name(
         return Ok(("".to_string(), "".to_string(), "".to_string()));
     };
 
-    let token = String::from_utf8_lossy(&output_unwraped.stdout);
+    let token = String::from_utf8_lossy(&output.stdout);
     let token = token.trim();
     if kubernetes_api_url == "" {
         return Ok(("".to_string(), "".to_string(), "".to_string()));
