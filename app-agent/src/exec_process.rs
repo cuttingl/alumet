@@ -17,7 +17,7 @@ use alumet::{
     plugin::event::StartConsumerMeasurement,
     resources::ResourceConsumer,
 };
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, Context, Error};
 
 /// Spawns a child process and waits for it to exit.
 pub fn exec_child(external_command: String, args: Vec<String>) -> anyhow::Result<ExitStatus> {
@@ -38,7 +38,7 @@ pub fn exec_child(external_command: String, args: Vec<String>) -> anyhow::Result
                 return Err(anyhow!(return_error));
             }
             _ => {
-                panic!("Error in child process");
+                return Err(anyhow!("Error in child process"));
             }
         },
     };
@@ -55,112 +55,48 @@ pub fn exec_child(external_command: String, args: Vec<String>) -> anyhow::Result
 }
 
 fn handle_permission_denied(external_command: String) -> String {
-    let file_permission_denied = match File::open(external_command.clone()) {
-        Ok(file) => file,
-        Err(err) => {
-            // Current parent can change if a parent of the parent don't have the correct rights
-            let mut current_parent = match std::path::Path::new(&external_command).parent() {
-                Some(parent) => parent,
-                None => return "".to_string(),
-            };
-            // Trough this loop I will iterate over parent of parent until I can retrieve metadata, it will show the first folder
-            // that I can't execute and suggest to the user to grant execution rights.
-            let metadata: Metadata;
-            loop {
-                match current_parent.metadata() {
-                    Ok(metadata_parent) => {
-                        metadata = metadata_parent;
-                        break;
-                    }
-                    Err(_) => {
-                        current_parent = match current_parent.parent() {
-                            Some(parent) => parent,
-                            None => {
-                                panic!("Unable to retrieve a parent for your file");
-                            }
-                        }
-                    }
-                }
-            }
-            let user_perm_parent = match metadata.permissions().mode() & 0o500 {
-                0o100 => 1,
-                _ => 0,
-            };
-            let group_perm_parent = match metadata.permissions().mode() & 0o050 {
-                0o010 => 1,
-                _ => 0,
-            };
-            let other_perm_parent = match metadata.permissions().mode() & 0o005 {
-                0o001 => 1,
-                _ => 0,
-            };
-            // Print warn message when parent folder's file has a missing execute rights
-            if user_perm_parent == 0 {
-                log::warn!(
-                    "folder '{}' is missing the following permissions for user owner:  'x'",
-                    current_parent.display()
-                )
-            }
-            if group_perm_parent == 0 {
-                log::warn!(
-                    "folder '{}' is missing the following permissions for group owner:  'x'",
-                    current_parent.display()
-                )
-            }
-            if other_perm_parent == 0 {
-                log::warn!(
-                    "folder '{}' is missing the following permissions for other:  'x'",
-                    current_parent.display()
-                )
-            }
-            if user_perm_parent == 0 || group_perm_parent == 0 || other_perm_parent == 0 {
-                log::info!("💡 Hint: try 'chmod +x {}'", current_parent.display())
-            }
-            panic!("Error when trying to read the file: {}", err);
+    let file_open_result = File::open(external_command.clone());
+    let file_correctly_opened = if let Err(err) = file_open_result {
+        // Can't open the file, let's check it's parent
+        let current_parent = match find_a_parent_with_perm_issue(external_command.clone()) {
+            Ok(parent) => parent,
+            Err(err) => return err,
+        };
+        let metadata: Metadata = current_parent.metadata().expect(&format!("Unable to retrieve metadata of file: {}", current_parent.display()));
+        let missing_permissions = check_missing_permissions(metadata.permissions().mode(), 0o555);
+        if missing_permissions & 0o500 != 0 || missing_permissions & 0o050 != 0 || missing_permissions & 0o005 != 0 {
+            log::warn!(
+                "folder '{}' is missing the following permissions:  'rx'",
+                current_parent.display()
+            );
+            log::info!("💡 Hint: try 'chmod +rx {}'", current_parent.display());
         }
+        return format!("Error when trying to read the file: {}", external_command.clone());
+    } else if let Ok(file) = file_open_result {
+        // Can open the file
+        file
+    } else {
+        return "Error when trying to read the file".to_owned();
     };
 
-    // Get file metadata
-    let file_metadata = file_permission_denied
+    // Get file metadata to see missing permissions
+    let file_metadata = file_correctly_opened
         .metadata()
         .expect(format!("Unable to retrieve metadata for: {}", external_command).as_str());
-    // Check for user permissions.
-    let user_perm = match file_metadata.permissions().mode() & 0o500 {
-        0 => "rx",
-        1 => "r",
-        4 => "x",
-        _ => "",
-    };
-    // Check for group permissions.
-    let group_perm: &str = match file_metadata.permissions().mode() & 0o050 {
-        0 => "rx",
-        1 => "r",
-        4 => "x",
-        _ => "",
-    };
-    // Check for other permissions.
-    let other_perm = match file_metadata.permissions().mode() & 0o005 {
-        0 => "rx",
-        1 => "r",
-        4 => "x",
-        _ => "",
-    };
-    if user_perm == "rx" || group_perm == "rx" || other_perm == "rx" {
-        log::error!(
-            "file '{}' is missing the following permissions:  'rx'",
-            external_command
-        );
-        log::info!("💡 Hint: try 'chmod +rx {}'", external_command)
-    } else if user_perm == "r" || group_perm == "r" || other_perm == "r" {
-        log::error!("file '{}' is missing the following permissions:  'r'", external_command);
-        log::info!("💡 Hint: try 'chmod +r {}'", external_command)
-    } else if user_perm == "x" || group_perm == "x" || other_perm == "x" {
-        log::error!("file '{}' is missing the following permissions:  'x'", external_command);
-        log::info!("💡 Hint: try 'chmod +x {}'", external_command)
+    let missing_permissions = check_missing_permissions(file_metadata.permissions().mode(), 0o505);
+    let missing_right_str;
+    if missing_permissions & 0o500 != 0 || missing_permissions & 0o050 != 0 || missing_permissions & 0o005 != 0 {
+        missing_right_str = "rx"
+    } else if missing_permissions & 0o400 != 0 || missing_permissions & 0o040 != 0 || missing_permissions & 0o004 != 0 {
+        missing_right_str = "r"
+    } else if missing_permissions & 0o100 != 0 || missing_permissions & 0o010 != 0 || missing_permissions & 0o001 != 0 {
+        missing_right_str = "x"
     } else {
-        log::warn!("Can't determine right issue about the file: {}", external_command);
+        missing_right_str = "rx"
     }
-    "Issue happened about file's permission".to_string()
+    log::error!("file '{}' is missing the following permissions:  'x'", external_command);
+    log::info!("💡 Hint: try 'chmod +{} {}'",missing_right_str, external_command);
+    "Error happened about file's permission".to_string()
 }
 
 fn handle_not_found(external_command: String, args: Vec<String>) -> String {
@@ -187,11 +123,11 @@ fn handle_not_found(external_command: String, args: Vec<String>) -> String {
         let entry_type = entry.file_type().unwrap();
         if entry_type.is_file() {
             let entry_string = entry.file_name().into_string().unwrap();
-            let distance = super::utils::distance_with_adjacent_transposition(
+            let distance = super::word_distance::distance_with_adjacent_transposition(
                 external_command
-                    .strip_prefix("./")
-                    .unwrap_or(&external_command)
-                    .to_string(),
+                .strip_prefix("./")
+                .unwrap_or(&external_command)
+                .to_string(),
                 entry_string.clone(),
             );
             if distance < 3 && distance < lowest_distance {
@@ -202,48 +138,88 @@ fn handle_not_found(external_command: String, args: Vec<String>) -> String {
     }
     match best_element {
         Some((element, distance)) => {
+            let argument_list = args.iter().map(|arg| {
+                if arg.contains(' ') {
+                   format!("\"{}\"", arg)
+               } else {
+                   arg.to_string()
+               }
+           }).collect::<Vec<_>>().join(" ");
             if distance == 0 {
                 log::info!(
                     "💡 Hint: A file named '{}' exists in the current directory. Prepend ./ to execute it.",
                     element
                 );
-                log::info!(
-                    "Example: {} exec ./{} {}",
-                    app_path,
-                    element,
-                    args.iter()
-                        .map(|arg| {
-                            if arg.contains(' ') {
-                                format!("\"{}\"", arg)
-                            } else {
-                                arg.to_string()
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                );
+                log::info!("Example: {} exec ./{} {}", app_path, element, argument_list);
             } else {
-                log::info!(
-                    "💡 Hint: Did you mean ./{} {}",
-                    element,
-                    args.iter()
-                        .map(|arg| {
-                            if arg.contains(' ') {
-                                format!("\"{}\"", arg)
-                            } else {
-                                arg.to_string()
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                );
+                log::info!("💡 Hint: Did you mean ./{} {}", element, argument_list);
             }
         }
         None => {
-            log::warn!("💡 Hint: No matching file exists in the current directory. Prepend ./ to execute it.");
+            log::warn!("💡 Hint: No matching file exists in the current directory. Please try again we a different one.");
         }
     }
-    "Issue happened because the file was not found".to_string()
+    "Sorry but the file was not found".to_string()
+}
+
+fn check_missing_permissions(current_permissions: u32, required_permissions: u32) -> u32 {
+    let mut missing = 0;
+
+    // Check read, write and execute permissions for the user
+    if (required_permissions & 0o400) != 0 && (current_permissions & 0o400) == 0 {
+        missing |= 0o400;
+    }
+    if (required_permissions & 0o200) != 0 && (current_permissions & 0o200) == 0 {
+        missing |= 0o200;
+    }
+    if (required_permissions & 0o100) != 0 && (current_permissions & 0o100) == 0 {
+        missing |= 0o100;
+    }
+
+    // Check read, write and execute permissions for the group
+    if (required_permissions & 0o040) != 0 && (current_permissions & 0o040) == 0 {
+        missing |= 0o040;
+    }
+    if (required_permissions & 0o020) != 0 && (current_permissions & 0o020) == 0 {
+        missing |= 0o020;
+    }
+    if (required_permissions & 0o010) != 0 && (current_permissions & 0o010) == 0 {
+        missing |= 0o010;
+    }
+
+    // Check read, write and execute permissions for others
+    if (required_permissions & 0o004) != 0 && (current_permissions & 0o004) == 0 {
+        missing |= 0o004;
+    }
+    if (required_permissions & 0o002) != 0 && (current_permissions & 0o002) == 0 {
+        missing |= 0o002;
+    }
+    if (required_permissions & 0o001) != 0 && (current_permissions & 0o001) == 0 {
+        missing |= 0o001;
+    }
+
+    missing
+}
+
+fn find_a_parent_with_perm_issue(path: String) -> anyhow::Result<std::path::PathBuf, String> {
+    // Current parent can change if a parent of the parent don't have the correct rights
+    let mut current_parent = match std::path::Path::new(&path).parent() {
+        Some(parent) => parent,
+        None => return Err("".to_string()),
+    };
+    // Through this loop I will iterate over parent of parent until I can retrieve metadata, it will show the first folder
+    // that I can't execute and suggest to the user to grant execution rights.
+    loop {
+        match current_parent.metadata() {
+            Ok(_) => return Ok(current_parent.to_path_buf()),
+            Err(_) => {
+                current_parent = match current_parent.parent() {
+                    Some(parent) => parent,
+                    None => return Err("Unable to retrieve a parent for your file".to_string()),
+                }
+            }
+        }
+    }
 }
 
 // Triggers one measurement (on all sources that support manual trigger).

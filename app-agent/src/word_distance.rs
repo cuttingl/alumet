@@ -1,7 +1,38 @@
 use std::collections::HashMap;
 
-// Damerau-Levenshtein distance
-pub fn distance_with_adjacent_transposition(a: String, b: String) -> usize {
+/// Computes the Damerau-Levenshtein distance between two strings.
+/// 
+/// The Damerau-Levenshtein distance is a measure of the similarity between two strings,
+/// which is defined as the minimum number of operations needed to transform one string
+/// into the other. The allowed operations are:
+/// 
+/// - Insertion of a single character
+/// - Deletion of a single character
+/// - Substitution of a single character
+/// - Transposition of two adjacent characters
+/// 
+/// # Arguments
+/// 
+/// * `a` - The first string.
+/// * `b` - The second string.
+/// 
+/// # Returns
+/// 
+/// The Damerau-Levenshtein distance between the two strings.
+/// 
+/// # Examples
+/// 
+/// ```
+/// let distance = distance_with_adjacent_transposition("kitten".to_string(), "sitting".to_string());
+/// assert_eq!(distance, 3);
+/// 
+/// let distance = distance_with_adjacent_transposition("flaw".to_string(), "lawn".to_string());
+/// assert_eq!(distance, 2);
+/// 
+/// let distance = distance_with_adjacent_transposition("ca".to_string(), "abc".to_string());
+/// assert_eq!(distance, 2);
+/// ```
+    pub fn distance_with_adjacent_transposition(a: String, b: String) -> usize {
     let a_chars: Vec<char> = a.chars().collect();
     let b_chars: Vec<char> = b.chars().collect();
     let a_len = a_chars.len();
