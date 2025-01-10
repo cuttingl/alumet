@@ -3,7 +3,7 @@
 use std::{
     fs::{self, File, Metadata},
     os::unix::{fs::PermissionsExt, process::ExitStatusExt},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::ExitStatus,
 };
 
@@ -99,7 +99,7 @@ fn handle_permission_denied(external_command: String) -> String {
     }
     log::error!("file '{}' is missing the following permissions:  'x'", external_command);
     log::info!("💡 Hint: try 'chmod +{} {}'", missing_right_str, external_command);
-    "Error happened about file's permission".to_string()
+    format!("Error happened about file's permission {}", external_command)
 }
 
 fn handle_not_found(external_command: String, args: Vec<String>) -> String {
@@ -126,11 +126,22 @@ fn handle_not_found(external_command: String, args: Vec<String>) -> String {
         let entry_type = entry.file_type().unwrap();
         if entry_type.is_file() {
             let entry_string = entry.file_name().into_string().unwrap();
-            let distance = super::word_distance::distance_with_adjacent_transposition(
-                external_command
+            let path = Path::new(&external_command);
+            let external_command_corrected_name: String;
+            if path.is_absolute() {
+                external_command_corrected_name = path
+                    .file_name()
+                    .and_then(|os_str| os_str.to_str().map(|s| s.to_string()))
+                    .unwrap_or_else(|| external_command.to_string());
+            } else {
+                external_command_corrected_name = external_command
                     .strip_prefix("./")
                     .unwrap_or(&external_command)
-                    .to_string(),
+                    .to_string();
+            }
+
+            let distance = super::word_distance::distance_with_adjacent_transposition(
+                external_command_corrected_name.clone(),
                 entry_string.clone(),
             );
             if distance < 3 && distance < lowest_distance {
@@ -161,6 +172,7 @@ fn handle_not_found(external_command: String, args: Vec<String>) -> String {
             } else {
                 log::info!("💡 Hint: Did you mean ./{} {}", element, argument_list);
             }
+            return "File not found but another appears to match".to_string();
         }
         None => {
             log::warn!(
@@ -243,4 +255,254 @@ pub fn trigger_measurement_now(pipeline: &MeasurementPipeline) -> anyhow::Result
         .async_runtime()
         .block_on(send_task)
         .context("failed to send TriggerMessage")
+}
+
+#[cfg(test)]
+mod tests {
+    use fs::Permissions;
+
+    use super::*;
+
+    fn reset_permissions(folder_a: PathBuf, folder_b: PathBuf, file: &File) {
+        fs::set_permissions(&folder_a, Permissions::from_mode(0o777)).expect("Can't change folder's permissions");
+        fs::set_permissions(&folder_b, Permissions::from_mode(0o777)).expect("Can't change folder's permissions");
+        file.set_permissions(Permissions::from_mode(0o777))
+            .expect("Can't change file's permissions");
+    }
+
+    #[test]
+    fn test_check_missing_permissions() {
+        // Check user perms
+        assert_eq!(0o000, check_missing_permissions(0o700, 0o700));
+        assert_eq!(0o000, check_missing_permissions(0o400, 0o400));
+        assert_eq!(0o000, check_missing_permissions(0o200, 0o200));
+        assert_eq!(0o000, check_missing_permissions(0o100, 0o100));
+        assert_eq!(0o100, check_missing_permissions(0o600, 0o700));
+        assert_eq!(0o200, check_missing_permissions(0o500, 0o700));
+        assert_eq!(0o400, check_missing_permissions(0o300, 0o700));
+        assert_eq!(0o500, check_missing_permissions(0o200, 0o700));
+        assert_eq!(0o600, check_missing_permissions(0o100, 0o700));
+        assert_eq!(0o700, check_missing_permissions(0o000, 0o700));
+        assert_eq!(0o100, check_missing_permissions(0o200, 0o300));
+        assert_eq!(0o100, check_missing_permissions(0o000, 0o100));
+        assert_eq!(0o200, check_missing_permissions(0o000, 0o200));
+        assert_eq!(0o400, check_missing_permissions(0o000, 0o400));
+
+        // Check group perms
+        assert_eq!(0o000, check_missing_permissions(0o070, 0o070));
+        assert_eq!(0o000, check_missing_permissions(0o070, 0o070));
+        assert_eq!(0o000, check_missing_permissions(0o040, 0o040));
+        assert_eq!(0o000, check_missing_permissions(0o020, 0o020));
+        assert_eq!(0o000, check_missing_permissions(0o010, 0o010));
+        assert_eq!(0o010, check_missing_permissions(0o060, 0o070));
+        assert_eq!(0o020, check_missing_permissions(0o050, 0o070));
+        assert_eq!(0o040, check_missing_permissions(0o030, 0o070));
+        assert_eq!(0o050, check_missing_permissions(0o020, 0o070));
+        assert_eq!(0o060, check_missing_permissions(0o010, 0o070));
+        assert_eq!(0o070, check_missing_permissions(0o000, 0o070));
+        assert_eq!(0o010, check_missing_permissions(0o020, 0o030));
+        assert_eq!(0o010, check_missing_permissions(0o000, 0o010));
+        assert_eq!(0o020, check_missing_permissions(0o000, 0o020));
+        assert_eq!(0o040, check_missing_permissions(0o000, 0o040));
+
+        // Check other perms
+        assert_eq!(0o000, check_missing_permissions(0o007, 0o007));
+        assert_eq!(0o000, check_missing_permissions(0o004, 0o004));
+        assert_eq!(0o000, check_missing_permissions(0o002, 0o002));
+        assert_eq!(0o000, check_missing_permissions(0o001, 0o001));
+        assert_eq!(0o001, check_missing_permissions(0o006, 0o007));
+        assert_eq!(0o002, check_missing_permissions(0o005, 0o007));
+        assert_eq!(0o004, check_missing_permissions(0o003, 0o007));
+        assert_eq!(0o005, check_missing_permissions(0o002, 0o007));
+        assert_eq!(0o006, check_missing_permissions(0o001, 0o007));
+        assert_eq!(0o007, check_missing_permissions(0o000, 0o007));
+        assert_eq!(0o001, check_missing_permissions(0o002, 0o003));
+        assert_eq!(0o001, check_missing_permissions(0o000, 0o001));
+        assert_eq!(0o002, check_missing_permissions(0o000, 0o002));
+        assert_eq!(0o004, check_missing_permissions(0o000, 0o004));
+    }
+
+    #[test]
+    fn test_handle_permission_denied() {
+        let tmp = std::env::temp_dir();
+        let root: std::path::PathBuf = tmp.join("river_folder/");
+        if root.exists() {
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+        let river_song_folder = root.join("song_folder/");
+        std::fs::create_dir_all(&river_song_folder).unwrap();
+
+        let path_file = river_song_folder.join("script.sh");
+        let path_file_string = path_file.clone().into_os_string().into_string().unwrap();
+        std::fs::write(
+            path_file.clone(),
+            format!(
+                "#!/bin/sh\n
+                echo \"Hello\"\n
+                sleep 2"
+            ),
+        )
+        .unwrap();
+
+        let file = match File::open(&path_file) {
+            Err(why) => panic!("couldn't open {}: {}", path_file.display(), why),
+            Ok(file) => file,
+        };
+
+        let message_expect_folder = "Can't change folder's permissions";
+        let message_expect_file = "Can't change file's permissions";
+
+        file.set_permissions(Permissions::from_mode(0o555))
+            .expect(message_expect_file);
+        fs::set_permissions(&river_song_folder, Permissions::from_mode(0o555)).expect(message_expect_folder);
+        fs::set_permissions(&root, Permissions::from_mode(0o555)).expect(message_expect_folder);
+        assert_eq!(
+            format!("Error happened about file's permission {}", path_file_string.clone()),
+            handle_permission_denied(path_file_string.clone())
+        );
+        reset_permissions(root.clone(), river_song_folder.clone(), &file);
+
+        file.set_permissions(Permissions::from_mode(0o444))
+            .expect(message_expect_file);
+        fs::set_permissions(&river_song_folder, Permissions::from_mode(0o555)).expect(message_expect_folder);
+        fs::set_permissions(&root, Permissions::from_mode(0o555)).expect(message_expect_folder);
+        assert_eq!(
+            format!("Error happened about file's permission {}", path_file_string.clone()),
+            handle_permission_denied(path_file_string.clone())
+        );
+        reset_permissions(root.clone(), river_song_folder.clone(), &file);
+
+        file.set_permissions(Permissions::from_mode(0o555))
+            .expect(message_expect_file);
+        fs::set_permissions(&river_song_folder, Permissions::from_mode(0o555)).expect(message_expect_folder);
+        fs::set_permissions(&root, Permissions::from_mode(0o444)).expect(message_expect_folder);
+        assert_eq!(
+            format!("Error when trying to read the file: {}", path_file_string.clone()),
+            handle_permission_denied(path_file_string.clone())
+        );
+        reset_permissions(root.clone(), river_song_folder.clone(), &file);
+
+        file.set_permissions(Permissions::from_mode(0o555))
+            .expect(message_expect_file);
+        fs::set_permissions(&river_song_folder, Permissions::from_mode(0o555)).expect(message_expect_folder);
+        fs::set_permissions(&root, Permissions::from_mode(0o111)).expect(message_expect_folder);
+        assert_eq!(
+            format!("Error happened about file's permission {}", path_file_string.clone()),
+            handle_permission_denied(path_file_string.clone())
+        );
+        reset_permissions(root.clone(), river_song_folder.clone(), &file);
+
+        file.set_permissions(Permissions::from_mode(0o555))
+            .expect(message_expect_file);
+        fs::set_permissions(&river_song_folder, Permissions::from_mode(0o111)).expect(message_expect_folder);
+        fs::set_permissions(&root, Permissions::from_mode(0o111)).expect(message_expect_folder);
+        assert_eq!(
+            format!("Error happened about file's permission {}", path_file_string.clone()),
+            handle_permission_denied(path_file_string.clone())
+        );
+        reset_permissions(root.clone(), river_song_folder.clone(), &file);
+
+        file.set_permissions(Permissions::from_mode(0o555))
+            .expect(message_expect_file);
+        fs::set_permissions(&river_song_folder, Permissions::from_mode(0o111)).expect(message_expect_folder);
+        fs::set_permissions(&root, Permissions::from_mode(0o555)).expect(message_expect_folder);
+        assert_eq!(
+            format!("Error happened about file's permission {}", path_file_string.clone()),
+            handle_permission_denied(path_file_string.clone())
+        );
+        reset_permissions(root.clone(), river_song_folder.clone(), &file);
+
+        file.set_permissions(Permissions::from_mode(0o555))
+            .expect(message_expect_file);
+        fs::set_permissions(&river_song_folder, Permissions::from_mode(0o000)).expect(message_expect_folder);
+        fs::set_permissions(&root, Permissions::from_mode(0o555)).expect(message_expect_folder);
+        assert_eq!(
+            format!("Error when trying to read the file: {}", path_file_string.clone()),
+            handle_permission_denied(path_file_string.clone())
+        );
+        reset_permissions(root.clone(), river_song_folder.clone(), &file);
+
+        file.set_permissions(Permissions::from_mode(0o555))
+            .expect(message_expect_file);
+        fs::set_permissions(&river_song_folder, Permissions::from_mode(0o555)).expect(message_expect_folder);
+        fs::set_permissions(&root, Permissions::from_mode(0o000)).expect(message_expect_folder);
+        assert_eq!(
+            format!("Error when trying to read the file: {}", path_file_string.clone()),
+            handle_permission_denied(path_file_string.clone())
+        );
+        reset_permissions(root.clone(), river_song_folder.clone(), &file);
+    }
+
+    #[test]
+    fn test_handle_not_found() {
+        let tmp = std::env::temp_dir();
+        let root: std::path::PathBuf = tmp.join("river_folder/");
+        if root.exists() {
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+        std::fs::create_dir_all(&root).unwrap();
+        fs::set_permissions(&root, Permissions::from_mode(0o777)).expect("Can't change folder's permissions");
+        std::env::set_current_dir(&root).expect("Error when trying to modify working directory");
+
+        let path_file = root.join("script.sh");
+        let path_non_existing_file = root.join("scripts.sh");
+        let path_file_string = path_file.clone().into_os_string().into_string().unwrap();
+        let path_non_existing_file_string = path_non_existing_file.clone().into_os_string().into_string().unwrap();
+        std::fs::write(
+            path_file.clone(),
+            format!(
+                "#!/bin/sh\n
+                echo \"Hello\"\n
+                sleep 2"
+            ),
+        )
+        .unwrap();
+        let file = match File::open(&path_file) {
+            Err(why) => panic!("couldn't open {}: {}", path_file.display(), why),
+            Ok(file) => file,
+        };
+        file.set_permissions(Permissions::from_mode(0o777))
+            .expect("Can't modify file's permissions");
+        let args: Vec<String> = vec![];
+
+        assert_eq!(
+            "File not found but another appears to match",
+            handle_not_found(path_file_string.clone(), args.clone())
+        );
+        assert_eq!(
+            "File not found but another appears to match",
+            handle_not_found(path_non_existing_file_string.clone(), args.clone())
+        );
+        assert_eq!(
+            "File not found but another appears to match",
+            handle_not_found("scripts.sh".to_owned(), args.clone())
+        );
+        assert_eq!(
+            "File not found but another appears to match",
+            handle_not_found("./script.sh".to_owned(), args.clone())
+        );
+        assert_eq!(
+            "Sorry but the file was not found",
+            handle_not_found("./scriptAAAAAAAAAA.sh".to_owned(), args.clone())
+        );
+
+        let path_file_distance2 = root.join("scriptAA.sh");
+        std::fs::write(
+            path_file_distance2.clone(),
+            format!(
+                "#!/bin/sh\n
+            echo \"Bye\"\n
+            sleep 2"
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            "File not found but another appears to match",
+            handle_not_found("./scripts.sh".to_owned(), args.clone())
+        );
+        assert_eq!(
+            "File not found but another appears to match",
+            handle_not_found("./script.sh".to_owned(), args.clone())
+        );
+    }
 }
