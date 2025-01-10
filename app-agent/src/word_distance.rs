@@ -23,6 +23,7 @@ use std::collections::HashMap;
 /// # Examples
 ///
 /// ```
+/// use app_agent::word_distance::distance_with_adjacent_transposition;
 /// let distance = distance_with_adjacent_transposition("kitten".to_string(), "sitting".to_string());
 /// assert_eq!(distance, 3);
 ///
