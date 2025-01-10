@@ -62,7 +62,10 @@ fn handle_permission_denied(external_command: String) -> String {
             Ok(parent) => parent,
             Err(err) => return err,
         };
-        let metadata: Metadata = current_parent.metadata().expect(&format!("Unable to retrieve metadata of file: {}", current_parent.display()));
+        let metadata: Metadata = current_parent.metadata().expect(&format!(
+            "Unable to retrieve metadata of file: {}",
+            current_parent.display()
+        ));
         let missing_permissions = check_missing_permissions(metadata.permissions().mode(), 0o555);
         if missing_permissions & 0o500 != 0 || missing_permissions & 0o050 != 0 || missing_permissions & 0o005 != 0 {
             log::warn!(
@@ -95,7 +98,7 @@ fn handle_permission_denied(external_command: String) -> String {
         missing_right_str = "rx"
     }
     log::error!("file '{}' is missing the following permissions:  'x'", external_command);
-    log::info!("💡 Hint: try 'chmod +{} {}'",missing_right_str, external_command);
+    log::info!("💡 Hint: try 'chmod +{} {}'", missing_right_str, external_command);
     "Error happened about file's permission".to_string()
 }
 
@@ -125,9 +128,9 @@ fn handle_not_found(external_command: String, args: Vec<String>) -> String {
             let entry_string = entry.file_name().into_string().unwrap();
             let distance = super::word_distance::distance_with_adjacent_transposition(
                 external_command
-                .strip_prefix("./")
-                .unwrap_or(&external_command)
-                .to_string(),
+                    .strip_prefix("./")
+                    .unwrap_or(&external_command)
+                    .to_string(),
                 entry_string.clone(),
             );
             if distance < 3 && distance < lowest_distance {
@@ -138,13 +141,17 @@ fn handle_not_found(external_command: String, args: Vec<String>) -> String {
     }
     match best_element {
         Some((element, distance)) => {
-            let argument_list = args.iter().map(|arg| {
-                if arg.contains(' ') {
-                   format!("\"{}\"", arg)
-               } else {
-                   arg.to_string()
-               }
-           }).collect::<Vec<_>>().join(" ");
+            let argument_list = args
+                .iter()
+                .map(|arg| {
+                    if arg.contains(' ') {
+                        format!("\"{}\"", arg)
+                    } else {
+                        arg.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
             if distance == 0 {
                 log::info!(
                     "💡 Hint: A file named '{}' exists in the current directory. Prepend ./ to execute it.",
@@ -156,7 +163,9 @@ fn handle_not_found(external_command: String, args: Vec<String>) -> String {
             }
         }
         None => {
-            log::warn!("💡 Hint: No matching file exists in the current directory. Please try again we a different one.");
+            log::warn!(
+                "💡 Hint: No matching file exists in the current directory. Please try again we a different one."
+            );
         }
     }
     "Sorry but the file was not found".to_string()
