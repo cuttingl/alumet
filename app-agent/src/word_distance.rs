@@ -24,16 +24,16 @@ use std::collections::HashMap;
 ///
 /// ```
 /// use app_agent::word_distance::distance_with_adjacent_transposition;
-/// let distance = distance_with_adjacent_transposition("kitten".to_string(), "sitting".to_string());
+/// let distance = distance_with_adjacent_transposition("kitten", "sitting");
 /// assert_eq!(distance, 3);
 ///
-/// let distance = distance_with_adjacent_transposition("flaw".to_string(), "lawn".to_string());
+/// let distance = distance_with_adjacent_transposition("flaw", "lawn");
 /// assert_eq!(distance, 2);
 ///
-/// let distance = distance_with_adjacent_transposition("ca".to_string(), "abc".to_string());
+/// let distance = distance_with_adjacent_transposition("ca", "abc");
 /// assert_eq!(distance, 2);
 /// ```
-pub fn distance_with_adjacent_transposition(a: String, b: String) -> usize {
+pub fn distance_with_adjacent_transposition(a: &str, b: &str) -> usize {
     let a_chars: Vec<char> = a.chars().collect();
     let b_chars: Vec<char> = b.chars().collect();
     let a_len = a_chars.len();
@@ -85,92 +85,32 @@ mod tests {
 
     #[test]
     fn basic_cases() {
-        assert_eq!(0, distance_with_adjacent_transposition("".to_string(), "".to_string()));
-        assert_eq!(1, distance_with_adjacent_transposition("".to_string(), " ".to_string()));
-        assert_eq!(
-            5,
-            distance_with_adjacent_transposition("".to_string(), "Neron".to_string())
-        );
-        assert_eq!(
-            5,
-            distance_with_adjacent_transposition("Neron".to_string(), "".to_string())
-        );
-        assert_eq!(
-            1,
-            distance_with_adjacent_transposition("Neron".to_string(), "Necron".to_string())
-        );
-        assert_eq!(
-            1,
-            distance_with_adjacent_transposition("necron".to_string(), "neron".to_string())
-        );
-        assert_eq!(
-            5,
-            distance_with_adjacent_transposition("bread".to_string(), "butter".to_string())
-        );
-        assert_eq!(
-            1,
-            distance_with_adjacent_transposition("giggle".to_string(), "wiggle".to_string())
-        );
-        assert_eq!(
-            2,
-            distance_with_adjacent_transposition("sparkle".to_string(), "darkle".to_string())
-        );
-        assert_eq!(
-            6,
-            distance_with_adjacent_transposition("Amelia".to_string(), "Pond".to_string())
-        );
-        assert_eq!(
-            2,
-            distance_with_adjacent_transposition("Song".to_string(), "Pond".to_string())
-        );
-        assert_eq!(
-            4,
-            distance_with_adjacent_transposition("Donna".to_string(), "noble".to_string())
-        );
-        assert_eq!(
-            7,
-            distance_with_adjacent_transposition("Tweety".to_string(), "Sylvester".to_string())
-        );
-        assert_eq!(
-            6,
-            distance_with_adjacent_transposition("abacus".to_string(), "flower".to_string())
-        );
+        assert_eq!(0, distance_with_adjacent_transposition("", ""));
+        assert_eq!(1, distance_with_adjacent_transposition("", " "));
+        assert_eq!(5, distance_with_adjacent_transposition("", "Neron"));
+        assert_eq!(5, distance_with_adjacent_transposition("Neron", ""));
+        assert_eq!(1, distance_with_adjacent_transposition("Neron", "Necron"));
+        assert_eq!(1, distance_with_adjacent_transposition("necron", "neron"));
+        assert_eq!(5, distance_with_adjacent_transposition("bread", "butter"));
+        assert_eq!(1, distance_with_adjacent_transposition("giggle", "wiggle"));
+        assert_eq!(2, distance_with_adjacent_transposition("sparkle", "darkle"));
+        assert_eq!(6, distance_with_adjacent_transposition("Amelia", "Pond"));
+        assert_eq!(2, distance_with_adjacent_transposition("Song", "Pond"));
+        assert_eq!(4, distance_with_adjacent_transposition("Donna", "noble"));
+        assert_eq!(7, distance_with_adjacent_transposition("Tweety", "Sylvester"));
+        assert_eq!(6, distance_with_adjacent_transposition("abacus", "flower"));
     }
 
     #[test]
     fn intermediate_cases() {
-        assert_eq!(
-            1,
-            distance_with_adjacent_transposition("Toto".to_string(), "toto".to_string())
-        );
-        assert_eq!(
-            1,
-            distance_with_adjacent_transposition("Peter".to_string(), "peter".to_string())
-        );
-        assert_eq!(
-            1,
-            distance_with_adjacent_transposition("capaldi".to_string(), "Capaldi".to_string())
-        );
-        assert_eq!(
-            0,
-            distance_with_adjacent_transposition("tutu".to_string(), "tutu".to_string())
-        );
-        assert_eq!(
-            1,
-            distance_with_adjacent_transposition("tuut".to_string(), "tutu".to_string())
-        );
-        assert_eq!(
-            1,
-            distance_with_adjacent_transposition("tutu".to_string(), "tuut".to_string())
-        );
-        assert_eq!(
-            1,
-            distance_with_adjacent_transposition("tutu".to_string(), "tuut".to_string())
-        );
-        assert_eq!(
-            4,
-            distance_with_adjacent_transposition("hello".to_string(), "olleH".to_string())
-        );
+        assert_eq!(1, distance_with_adjacent_transposition("Toto", "toto"));
+        assert_eq!(1, distance_with_adjacent_transposition("Peter", "peter"));
+        assert_eq!(1, distance_with_adjacent_transposition("capaldi", "Capaldi"));
+        assert_eq!(0, distance_with_adjacent_transposition("tutu", "tutu"));
+        assert_eq!(1, distance_with_adjacent_transposition("tuut", "tutu"));
+        assert_eq!(1, distance_with_adjacent_transposition("tutu", "tuut"));
+        assert_eq!(1, distance_with_adjacent_transposition("tutu", "tuut"));
+        assert_eq!(4, distance_with_adjacent_transposition("hello", "olleH"));
     }
 
     #[test]
@@ -178,25 +118,19 @@ mod tests {
         assert_eq!(
             0,
             distance_with_adjacent_transposition(
-                "Hello, is it me you're looking for? I can see it in your eyes I can see it in your smile".to_string(),
-                "Hello, is it me you're looking for? I can see it in your eyes I can see it in your smile".to_string()
+                "Hello, is it me you're looking for? I can see it in your eyes I can see it in your smile",
+                "Hello, is it me you're looking for? I can see it in your eyes I can see it in your smile"
             )
         );
+        assert_eq!(0, distance_with_adjacent_transposition("&é'(-è_çà)=", "&é'(-è_çà)="));
+        assert_eq!(10, distance_with_adjacent_transposition("&é'(-è_çà)=", "=)àç_è-('é&"));
         assert_eq!(
             0,
-            distance_with_adjacent_transposition("&é'(-è_çà)=".to_string(), "&é'(-è_çà)=".to_string())
-        );
-        assert_eq!(
-            10,
-            distance_with_adjacent_transposition("&é'(-è_çà)=".to_string(), "=)àç_è-('é&".to_string())
-        );
-        assert_eq!(
-            0,
-            distance_with_adjacent_transposition("Привет, это круто".to_string(), "Привет, это круто".to_string())
+            distance_with_adjacent_transposition("Привет, это круто", "Привет, это круто")
         );
         assert_eq!(
             6,
-            distance_with_adjacent_transposition("Привет, круто это".to_string(), "Привет, это круто".to_string())
+            distance_with_adjacent_transposition("Привет, круто это", "Привет, это круто")
         );
     }
 }

@@ -31,11 +31,13 @@ pub fn exec_child(external_command: String, args: Vec<String>) -> anyhow::Result
         Err(e) => match e.kind() {
             std::io::ErrorKind::NotFound => {
                 let return_error: String = handle_not_found(external_command, args);
-                return Err(anyhow!(return_error));
+                log::error!("{}", return_error);
+                return Err(e.into());
             }
             std::io::ErrorKind::PermissionDenied => {
                 let return_error: String = handle_permission_denied(external_command);
-                return Err(anyhow!(return_error));
+                log::error!("{}", return_error);
+                return Err(e.into());
             }
             _ => {
                 return Err(anyhow!("Error in child process"));
@@ -141,8 +143,8 @@ fn handle_not_found(external_command: String, args: Vec<String>) -> String {
             }
 
             let distance = super::word_distance::distance_with_adjacent_transposition(
-                external_command_corrected_name.clone(),
-                entry_string.clone(),
+                &external_command_corrected_name.clone(),
+                &entry_string.clone(),
             );
             if distance < 3 && distance < lowest_distance {
                 lowest_distance = distance;
